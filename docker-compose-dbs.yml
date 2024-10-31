@@ -1,0 +1,19 @@
+version: "3.3"
+networks:
+  erxes:
+    external: true
+services:
+  mongo:
+    hostname: mongo
+    image: mongo:4.4.25
+    ports:
+      - 0.0.0.0:27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: erxes
+      MONGO_INITDB_ROOT_PASSWORD: PwUlbQWxY6
+    networks:
+      - erxes
+    volumes:
+      - ./mongodata:/data/db
+    extra_hosts:
+      - mongo:127.0.0.1

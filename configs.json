@@ -1,0 +1,29 @@
+{
+    "domain": "example.erxes.io",
+    "jwt_token_secret": "FhNs8wxtDU",
+    "essyncer": {},
+    "redis": {
+        "password": "Pa0lzoaiFK"
+    },
+    "installer": {},
+    "elasticsearch": {},
+    "mongo": {
+        "username": "erxes",
+        "password": "s2tCKWdiqb",
+        "replication": true
+    },
+    "rabbitmq": {
+        "cookie": "",
+        "user": "erxes",
+        "pass": "jwudnPc0Dk",
+        "vhost": ""
+    },
+    "plugins": [
+        {
+            "name": "sales"
+        },
+        {
+            "name": "tasks"
+        }
+    ]
+}

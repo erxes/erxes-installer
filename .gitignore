@@ -1,0 +1,5 @@
+elasticsearchData
+mongodata
+node_modules
+rabbitmq-data
+redisdata
