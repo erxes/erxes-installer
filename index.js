@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const fse = require("fs-extra");
 const { Select, Input, MultiSelect } = require("enquirer");
 const generator = require("generate-password");
 const {
@@ -47,6 +48,8 @@ const installAndDeployment = async () => {
     required: true
   }).run();
 
+  configs.domain = domain;
+
   const version = await new Select({
     message: "Select release: ",
     choices: ["2.0.3", "2.0.2", "2.0.1"]
@@ -88,6 +91,8 @@ const installAndDeployment = async () => {
 };
 
 const installAndRemovePlugins = async () => {
+  const configs = await fse.readJSON(filePath("configs.json"));
+
   const action = await new Select({
     message: "Which action do you want: ",
     choices: ["Install new plugins", "Uninstall plugins"]
