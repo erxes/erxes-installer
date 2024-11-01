@@ -46,7 +46,12 @@ const installAndDeployment = async () => {
     required: true
   }).run();
 
-  configs.domain = domain;
+  const version = await new Select({
+    message: "Select release: ",
+    choices: ["2.0.3", "2.0.2", "2.0.1"]
+  }).run();
+
+  configs.image_tag = version;
 
   const installTypeSelect = new Select({
     message: "Select installation type: ",

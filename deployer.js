@@ -558,7 +558,6 @@ const erxesUp = async () => {
           REACT_APP_PUBLIC_PATH: "",
           REACT_APP_CDN_HOST: widgets_domain,
           REACT_APP_API_URL: gateway_url,
-          REACT_APP_DASHBOARD_URL: dashboard_domain,
           REACT_APP_API_SUBSCRIPTION_URL: subscription_url,
           NGINX_PORT:
             (configs.coreui || {}).NGINX_PORT || SERVICE_INTERNAL_PORT,
