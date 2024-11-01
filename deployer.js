@@ -359,6 +359,8 @@ const deployDbs = async () => {
 
   const configs = await fse.readJSON(filePath("configs.json"));
 
+  console.log(configs);
+
   const dockerComposeConfig = {
     version: "3.3",
     networks: {
