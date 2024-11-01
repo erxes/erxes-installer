@@ -523,6 +523,8 @@ module.exports.removeService = async () => {
 
 const erxesUp = async () => {
   const configs = await fse.readJSON(filePath("configs.json"));
+
+  console.log(configs);
   const be_env = configs.be_env || {};
   const image_tag = configs.image_tag || "federation";
   const domain = configs.domain;
