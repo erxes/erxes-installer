@@ -269,16 +269,21 @@ const generateNetworks = configs => {
 
 const deployDbs = async () => {
   const ora = (await import("ora")).default;
-
   const spinner = ora();
 
   spinner.start("Cleaning up...");
   await cleaning();
   spinner.succeed("Cleanup complete.");
 
-  spinner.start("Initializing Docker swarm...");
-  await execCommand("docker swarm init", true);
-  spinner.succeed("Docker swarm initialized.");
+  spinner.start("Checking Docker swarm status...");
+  const { stdout: dockerInfo } = await execCommand("docker info", true);
+  if (!dockerInfo.includes("Swarm: active")) {
+    spinner.start("Initializing Docker swarm...");
+    await execCommand("docker swarm init", true);
+    spinner.succeed("Docker swarm initialized.");
+  } else {
+    spinner.succeed("Docker swarm is already active.");
+  }
 
   spinner.start("Creating Docker network...");
   await execCommand("docker network create --driver overlay erxes", true);
@@ -327,21 +332,17 @@ const deployDbs = async () => {
     spinner.succeed("MongoDB service configured.");
   }
 
-  // Continue adding spinner steps for other services like Elasticsearch, Redis, RabbitMQ...
-
   spinner.start("Generating docker-compose-dbs.yml...");
   const yamlString = yaml.stringify(dockerComposeConfig);
   fs.writeFileSync(filePath("docker-compose-dbs.yml"), yamlString);
   spinner.succeed("docker-compose-dbs.yml generated.");
 
   spinner.start("Deploying databases...");
-  if (isSwarm) {
-    await execCommand(
-      "docker stack deploy --compose-file docker-compose-dbs.yml erxes-dbs --with-registry-auth --resolve-image changed"
-    );
-  } else {
-    await execCommand("docker-compose -f docker-compose-dbs.yml up -d");
-  }
+
+  await execCommand(
+    "docker stack deploy --compose-file docker-compose-dbs.yml erxes-dbs --with-registry-auth --resolve-image changed"
+  );
+
   spinner.succeed("Databases deployed.");
 };
 
