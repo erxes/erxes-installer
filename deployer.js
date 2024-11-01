@@ -351,11 +351,11 @@ const deployDbs = async () => {
 
   const spinner = ora();
 
-  spinner.start("Cleaning up...");
+  // spinner.start("Cleaning up...");
 
-  await cleaning();
+  // // await cleaning();
 
-  spinner.succeed("Cleanup complete.");
+  // spinner.succeed("Cleanup complete.");
 
   const configs = await fse.readJSON(filePath("configs.json"));
 
