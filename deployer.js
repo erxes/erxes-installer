@@ -351,15 +351,7 @@ const deployDbs = async () => {
 
   const spinner = ora();
 
-  // spinner.start("Cleaning up...");
-
-  // // await cleaning();
-
-  // spinner.succeed("Cleanup complete.");
-
   const configs = await fse.readJSON(filePath("configs.json"));
-
-  console.log(configs);
 
   const dockerComposeConfig = {
     version: "3.3",
@@ -496,8 +488,6 @@ const deployDbs = async () => {
   spinner.succeed("Databases deployed.");
 
   return;
-
-  // return execCommand("docker-compose -f docker-compose-dbs.yml up -d");
 };
 
 module.exports.installerUpdateConfigs = async () => {
@@ -531,13 +521,7 @@ module.exports.removeService = async () => {
   await execCommand(`docker service rm ${name}`, true);
 };
 
-module.exports.up = program => {
-  return up({
-    uis: program.uis,
-    fromInstaller: program.fromInstaller,
-    downloadLocales: program.locales
-  });
-};
+module.exports.up = up;
 
 const dumpDb = async program => {
   if (process.argv.length < 4) {
@@ -599,4 +583,477 @@ module.exports.syncui = () => {
   const ui_location = process.argv[4];
 
   return syncUI({ name, ui_location });
+};
+
+const up = async () => {
+  await cleaning();
+
+  const configs = await fse.readJSON(filePath("configs.json"));
+  const be_env = configs.be_env || {};
+  const image_tag = configs.image_tag || "federation";
+  const domain = configs.domain;
+  const gateway_url = `${domain}/gateway`;
+  const subscription_url = `wss://${gateway_url.replace(
+    "https://",
+    ""
+  )}/graphql`;
+  const widgets = configs.widgets || {};
+  const widgets_domain = widgets.domain || `${domain}/widgets`;
+
+  const NGINX_HOST = domain.replace("https://", "");
+
+  const extra_hosts = [];
+
+  const { RABBITMQ_HOST } = commonEnvs(configs);
+
+  // update the directory on the Docker system to have 0777 or drwxrwxrwx permssion, so that all users have read/write/execute permission.
+  // chmod 0777 core-api-uploads
+  if (!(await fse.exists(filePath("core-api-uploads")))) {
+    await execCommand("mkdir core-api-uploads");
+  }
+
+  const dockerComposeConfig = {
+    version: "3.7",
+    networks: {
+      erxes: generateNetworks(configs)
+    },
+    services: {
+      coreui: {
+        image: `erxes/erxes:${(configs.coreui || {}).image_tag || image_tag}`,
+        environment: {
+          REACT_APP_PUBLIC_PATH: "",
+          REACT_APP_CDN_HOST: widgets_domain,
+          REACT_APP_API_URL: gateway_url,
+          REACT_APP_DASHBOARD_URL: dashboard_domain,
+          REACT_APP_API_SUBSCRIPTION_URL: subscription_url,
+          NGINX_PORT:
+            (configs.coreui || {}).NGINX_PORT || SERVICE_INTERNAL_PORT,
+          NGINX_HOST,
+          NODE_ENV: "production",
+          REACT_APP_FILE_UPLOAD_MAX_SIZE: 524288000,
+          REACT_APP_RELEASE: configs.image_tag || "",
+          ...((configs.coreui || {}).extra_env || {})
+        },
+        ports: [`${UI_PORT}:${SERVICE_INTERNAL_PORT}`],
+        volumes: [
+          "./plugins.js:/usr/share/nginx/html/js/plugins.js",
+          "./plugin-uis:/usr/share/nginx/html/js/plugins",
+          "./locales:/usr/share/nginx/html/locales"
+        ],
+        networks: ["erxes"]
+      },
+      "plugin-core-api": {
+        image: `erxes/core:${(configs.core || {}).image_tag || image_tag}`,
+        environment: {
+          OTEL_SERVICE_NAME: "plugin-core-api",
+          SERVICE_NAME: "core-api",
+          PORT: SERVICE_INTERNAL_PORT,
+          CLIENT_PORTAL_DOMAINS: configs.client_portal_domains || "",
+          JWT_TOKEN_SECRET: configs.jwt_token_secret,
+          LOAD_BALANCER_ADDRESS: generateLBaddress("http://plugin-core-api"),
+          MONGO_URL: mongoEnv(configs),
+          NODE_INSPECTOR: configs.nodeInspector ? "enabled" : undefined,
+          EMAIL_VERIFIER_ENDPOINT:
+            configs.email_verifier_endpoint ||
+            "https://email-verifier.erxes.io",
+          ...commonEnvs(configs),
+          ...((configs.core || {}).extra_env || {})
+        },
+        extra_hosts,
+        volumes: [
+          "./permissions.json:/erxes/packages/core/permissions.json",
+          "./core-api-uploads:/erxes/packages/core/src/private/uploads"
+        ],
+        networks: ["erxes"]
+      },
+      gateway: {
+        image: `erxes/gateway:${
+          (configs.gateway || {}).image_tag || image_tag
+        }`,
+        environment: {
+          OTEL_SERVICE_NAME: "gateway",
+          SERVICE_NAME: "gateway",
+          PORT: SERVICE_INTERNAL_PORT,
+          LOAD_BALANCER_ADDRESS: generateLBaddress("http://gateway"),
+          JWT_TOKEN_SECRET: configs.jwt_token_secret,
+          CLIENT_PORTAL_DOMAINS: configs.client_portal_domains || "",
+          MONGO_URL: mongoEnv(configs),
+          NODE_INSPECTOR: configs.nodeInspector ? "enabled" : undefined,
+          ...commonEnvs(configs),
+          ...((configs.gateway || {}).extra_env || {})
+        },
+        healthcheck,
+        extra_hosts,
+        ports: [`${GATEWAY_PORT}:${SERVICE_INTERNAL_PORT}`],
+        networks: ["erxes"]
+      },
+      crons: {
+        image: `erxes/crons:${image_tag}`,
+        environment: {
+          OTEL_SERVICE_NAME: "crons",
+          NODE_INSPECTOR: configs.nodeInspector ? "enabled" : undefined,
+          MONGO_URL: mongoEnv(configs),
+          ...commonEnvs(configs)
+        },
+        networks: ["erxes"]
+      },
+      "plugin-workers-api": {
+        image: `erxes/workers:${image_tag}`,
+        environment: {
+          OTEL_SERVICE_NAME: "workers",
+          SERVICE_NAME: "workers",
+          PORT: SERVICE_INTERNAL_PORT,
+          JWT_TOKEN_SECRET: configs.jwt_token_secret,
+          LOAD_BALANCER_ADDRESS: generateLBaddress("http://plugin-workers-api"),
+          MONGO_URL: mongoEnv(configs),
+          NODE_INSPECTOR: configs.nodeInspector ? "enabled" : undefined,
+          ...commonEnvs(configs),
+          ...((configs.workers || {}).extra_env || {})
+        },
+        extra_hosts,
+        networks: ["erxes"]
+      }
+    }
+  };
+
+  const deploy = {
+    mode: "replicated",
+    replicas: 2,
+    update_config: {
+      order: "start-first",
+      failure_action: "rollback",
+      delay: "1s"
+    }
+  };
+
+  dockerComposeConfig.services["plugin-core-api"].deploy = deploy;
+  if (configs.core && Number(configs.core.replicas)) {
+    dockerComposeConfig.services["plugin-core-api"].deploy.replicas = Number(
+      configs.core.replicas
+    );
+  }
+  dockerComposeConfig.services.coreui.deploy = deploy;
+  dockerComposeConfig.services.gateway.deploy = deploy;
+
+  // if (configs.essyncer) {
+  //   const essyncer_tag = configs.essyncer.image_tag || image_tag;
+  //   dockerComposeConfig.services.essyncer = {
+  //     image: `erxes/essyncer:${essyncer_tag}`,
+  //     environment: {
+  //       ELASTICSEARCH_URL: `http://${
+  //         configs.db_server_address ||
+  //         (isSwarm ? "erxes-dbs_elasticsearch" : "elasticsearch")
+  //       }:9200`,
+  //       MONGO_URL: `${mongoEnv(configs)}${
+  //         (configs.essyncer || {}).mongoOptions || ""
+  //       }`
+  //     },
+  //     volumes: ["./essyncerData:/data/essyncerData"],
+  //     extra_hosts,
+  //     networks: ["erxes"]
+  //   };
+  // }
+
+  if (configs.widgets) {
+    dockerComposeConfig.services.widgets = {
+      image: `erxes/widgets:${image_tag}`,
+      environment: {
+        ...be_env,
+        PORT: "3200",
+        ROOT_URL: widgets_domain,
+        API_URL: gateway_url,
+        API_SUBSCRIPTIONS_URL: subscription_url
+      },
+      ports: ["3200:3200"],
+      networks: ["erxes"]
+    };
+  }
+
+  // if (configs.installer) {
+  //   await fse.copy(`${__dirname}/../../installer`, filePath("installer"));
+
+  //   await execCommand(`cd installer && npm install`);
+
+  //   if (!fromInstaller) {
+  //     let host = RABBITMQ_HOST;
+
+  //     if (!configs.db_server_address) {
+  //       host = host.replace("erxes-dbs_rabbitmq", "127.0.0.1");
+  //     }
+
+  //     await execCommand(`cd installer && npm run pm2 delete all`, true);
+  //     await execCommand(
+  //       `cd installer && RABBITMQ_HOST=${host} npm run pm2 start index.js`
+  //     );
+  //   }
+  // }
+
+  let pluginsMapLocation =
+    "https://erxes-plugins.s3.us-west-2.amazonaws.com/pluginsMap.js";
+
+  if (configs.image_tag) {
+    if (buildPlugins.includes(configs.image_tag)) {
+      pluginsMapLocation = `https://erxes-${configs.image_tag}-plugins.s3.us-west-2.amazonaws.com/pluginsMap.js`;
+    } else {
+      pluginsMapLocation = `https://erxes-release-plugins.s3.us-west-2.amazonaws.com/${image_tag}/pluginsMap.js`;
+    }
+  }
+
+  log(`Downloading pluginsMap.js from ${pluginsMapLocation} ....`);
+  await execCurl(pluginsMapLocation, "pluginsMap.js");
+
+  const pluginsMap = require(filePath("pluginsMap.js"));
+
+  if (configs.private_plugins_map) {
+    log("Downloading private plugins map ....");
+
+    await execCurl(configs.private_plugins_map, "privatePluginsMap.js");
+
+    log("Merging plugin maps ....");
+
+    const privatePluginsMap = require(filePath("privatePluginsMap.js"));
+
+    for (const key of Object.keys(privatePluginsMap)) {
+      pluginsMap[key] = privatePluginsMap[key];
+    }
+  }
+
+  if (downloadLocales) {
+    updateLocales();
+  }
+
+  const uiPlugins = [];
+  const essyncerJSON = {
+    plugins: [
+      {
+        db_name: configs.mongo.db_name || "erxes",
+        collections: [
+          {
+            name: "users",
+            schema: '{"customFieldsData": <nested>}',
+            script: ""
+          },
+          {
+            name: "conformities",
+            schema: ` 
+            {
+              "mainType": {
+                "type": "keyword"
+              },
+              "mainTypeId": {
+                "type": "keyword"
+              },
+              "relType": {
+                "type": "keyword"
+              },
+              "relTypeId": {
+                "type": "keyword"
+              }
+            }
+          `,
+            script: ""
+          },
+          {
+            name: "tags",
+            schema: "{}",
+            script: ""
+          },
+          {
+            name: "forms",
+            schema: "{}",
+            script: ""
+          },
+          {
+            name: "fields",
+            schema: "{}",
+            script: ""
+          },
+          {
+            name: "fields_groups",
+            schema: "{}",
+            script: ""
+          },
+          {
+            name: "form_submissions",
+            schema: "{ 'value': { 'type': 'text' } }",
+            script: ""
+          },
+          {
+            name: "customers",
+            schema:
+              "{'createdAt': { 'type': 'date' }, 'organizationId': { 'type': 'keyword' }, 'state': { 'type': 'keyword' }, 'primaryEmail': { 'type': 'text', 'analyzer': 'uax_url_email_analyzer', 'fields': { 'keyword' : { 'type':'keyword' } } }, 'primaryPhone': { 'type': 'text', 'fields': { 'raw': { 'type': 'keyword' } } }, 'primaryAddress': { 'type': 'text', 'fields': { 'raw': { 'type': 'keyword' } } }, 'code': { 'type': 'text', 'fields': { 'raw': { 'type': 'keyword' } } }, 'integrationId': { 'type': 'keyword' }, 'relatedIntegrationIds': { 'type': 'keyword' }, 'scopeBrandIds': { 'type': 'keyword' }, 'ownerId': { 'type': 'keyword' }, 'position': { 'type': 'keyword' }, 'leadStatus': { 'type': 'keyword' }, 'tagIds': { 'type': 'keyword' }, 'companyIds': { 'type': 'keyword' }, 'mergedIds': { 'type': 'keyword' }, 'status': { 'type': 'keyword' }, 'emailValidationStatus': { 'type': 'keyword' }, 'customFieldsData': <nested>, 'trackedData': <nested>}",
+            script:
+              "if (ns.indexOf('customers') > -1) { if (doc.urlVisits) { delete doc.urlVisits } if (doc.trackedDataBackup) { delete doc.trackedDataBackup } if (doc.customFieldsDataBackup) { delete doc.customFieldsDataBackup } if (doc.messengerData) { delete doc.messengerData } if (doc.data) {delete doc.data}}"
+          },
+          {
+            name: "companies",
+            schema:
+              "{ 'createdAt': { 'type': 'date' }, 'primaryEmail': { 'type': 'text', 'analyzer': 'uax_url_email_analyzer', 'fields': { 'keyword' : { 'type':'keyword' } } }, 'primaryName': { 'type': 'text', 'fields': { 'raw': { 'type': 'keyword' } } }, 'primaryAddress': { 'type': 'text', 'fields': { 'raw': { 'type': 'keyword' } } }, 'scopeBrandIds': { 'type': 'keyword' }, 'plan': { 'type': 'keyword' }, 'industry': { 'type': 'keyword' }, 'parentCompanyId': { 'type': 'keyword' }, 'ownerId': { 'type': 'keyword' }, 'tagIds': { 'type': 'keyword' }, 'mergedIds': { 'type': 'keyword' }, 'status': { 'type': 'keyword' }, 'businessType': { 'type': 'keyword' }, 'customFieldsData' : <nested>, 'trackedData': <nested> }",
+            script: ""
+          },
+          {
+            name: "products",
+            schema:
+              "{ 'code': { 'type': 'keyword' }, 'name': { 'type': 'keyword' }, 'shortName': { 'type': 'keyword' }, 'status': { 'type': 'keyword' }, 'barcodeDescription': { 'type': 'keyword' }, 'order': { 'type': 'keyword' }, 'description': { 'type': 'keyword' }, 'tagIds': { 'type': 'keyword' }, 'categoryId': { 'type': 'keyword' }, 'type': { 'type': 'keyword' }, 'unitPrice': { 'type': 'float' }, 'createdAt': { 'type': 'date' }, 'uom': { 'type': 'keyword' }, 'taxCode': { 'type': 'keyword' }, 'taxType': { 'type': 'keyword' }, 'vendorId': { 'type': 'keyword' }, 'sameMasks': { 'type': 'keyword' }, 'sameDefault': { 'type': 'keyword' }, 'customFieldsData': <nested>, 'attachment': <nested>, 'attachmentMore': <nested>, 'subUoms': <nested>, 'barcodes': { 'type': 'keyword' } }",
+            script:
+              "if (ns.indexOf('products') > -1) { if (doc.variants) { delete doc.variants }}"
+          }
+        ]
+      }
+    ]
+  };
+
+  const permissionsJSON = [];
+
+  for (const plugin of configs.plugins || []) {
+    dockerComposeConfig.services[`plugin-${plugin.name}-api`] =
+      generatePluginBlock(configs, plugin);
+
+    if (pluginsMap[plugin.name]) {
+      const uiConfig = pluginsMap[plugin.name].ui;
+
+      if (uiConfig) {
+        uiPlugins.push(
+          JSON.stringify({
+            name: plugin.name,
+            ...pluginsMap[plugin.name].ui
+          })
+        );
+      }
+
+      const apiConfig = pluginsMap[plugin.name].api;
+
+      if (apiConfig) {
+        if (apiConfig.essyncer) {
+          const pluginExtraEnv = plugin.extra_env || {};
+          const match = (pluginExtraEnv.MONGO_URL || "").match(
+            /\/([^/?]+)(\?|$)/
+          );
+
+          const db_name = match ? match[1] : null;
+
+          essyncerJSON.plugins.push({
+            db_name: db_name || configs.mongo.db_name || "erxes",
+            collections: apiConfig.essyncer
+          });
+        }
+
+        if (apiConfig.permissions) {
+          permissionsJSON.push(apiConfig.permissions);
+        }
+      }
+    }
+  }
+
+  if (!(await fse.exists(filePath("plugin-uis")))) {
+    await execCommand("mkdir plugin-uis", true);
+  }
+
+  // if (uis) {
+  for (const plugin of configs.plugins || []) {
+    if (pluginsMap[plugin.name] && pluginsMap[plugin.name].ui) {
+      await syncUI(plugin);
+    }
+  }
+  // }/
+
+  log("Generating ui plugins.js ....");
+
+  await fs.promises.writeFile(
+    filePath("plugins.js"),
+    `
+    window.plugins = [
+      ${uiPlugins.join(",")}
+    ]
+  `.replace(/plugin-uis.s3.us-west-2.amazonaws.com/g, NGINX_HOST)
+  );
+
+  const extraServices = configs.extra_services || {};
+
+  for (const serviceName of Object.keys(extraServices)) {
+    const service = extraServices[serviceName];
+
+    dockerComposeConfig.services[serviceName] = {
+      ...service,
+      networks: ["erxes"]
+    };
+  }
+
+  const yamlString = yaml.stringify(dockerComposeConfig);
+
+  log("Generating permissions json ....");
+  await fse.writeJSON(filePath("permissions.json"), permissionsJSON);
+
+  // essyncer
+  if (!(await fse.exists(filePath("essyncerData")))) {
+    await execCommand("mkdir essyncerData", true);
+  }
+
+  log("Generating essyncer json ....");
+  await fse.writeJSON(filePath("essyncerData/plugins.json"), essyncerJSON);
+
+  log("Generating docker-compose.yml ....");
+
+  fs.writeFileSync(filePath("docker-compose.yml"), yamlString);
+
+  log("Generating nginx.conf ....");
+
+  const commonParams = `
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Server $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+  `;
+
+  const commonConfig = `
+    proxy_set_header Upgrade $http_upgrade;
+    ${commonParams}
+  `;
+
+  await fs.promises.writeFile(
+    filePath("nginx.conf"),
+    `
+    server {
+            listen 80;
+            server_name ${NGINX_HOST};
+
+            index index.html;
+            error_log /var/log/nginx/erxes.error.log;
+            access_log /var/log/nginx/erxes.access.log;
+            location / {
+                    proxy_pass http://127.0.0.1:${UI_PORT}/;
+                    ${commonParams}
+            }
+            location /widgets/ {
+                    proxy_pass http://127.0.0.1:3200/;
+                    ${commonConfig}
+            }
+            location /gateway/ {
+                    proxy_pass http://127.0.0.1:${GATEWAY_PORT}/;
+                    ${commonConfig}
+            }
+
+            location /dashboard/api {
+                proxy_pass http://127.0.0.1:4300/;
+                ${commonConfig}
+            }
+    }
+  `
+  );
+
+  log("Deploy ......");
+
+  // if (isSwarm) {
+  await execCommand("docker service rm erxes_gateway", true);
+
+  return execCommand(
+    "docker stack deploy --compose-file docker-compose.yml erxes --with-registry-auth --resolve-image changed"
+  );
+  // }
+
+  // return execCommand("docker-compose up -d");
 };

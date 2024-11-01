@@ -76,6 +76,7 @@ const installAndDeployment = async () => {
   }
 
   await deployDbs();
+  await up();
 
   fs.writeFileSync("configs.json", JSON.stringify(configs, null, 4));
 };
