@@ -521,73 +521,7 @@ module.exports.removeService = async () => {
   await execCommand(`docker service rm ${name}`, true);
 };
 
-module.exports.up = up;
-
-const dumpDb = async program => {
-  if (process.argv.length < 4) {
-    return console.log("Pass db name !!!");
-  }
-
-  const dbName = process.argv[3];
-
-  const configs = await fse.readJSON(filePath("configs.json"));
-
-  await execCommand(
-    `docker ps --format "{{.Names}}" | grep mongo > docker-mongo-name.txt`
-  );
-  const dockerMongoName = fs
-    .readFileSync("docker-mongo-name.txt")
-    .toString()
-    .replace("\n", "");
-
-  log("Running mongodump ....");
-  await execCommand(
-    `docker exec ${dockerMongoName} mongodump -u ${configs.mongo.username} -p ${configs.mongo.password} --authenticationDatabase admin --db ${dbName}`
-  );
-
-  if (program.copydump) {
-    log("Copying dump ....");
-    await execCommand(`docker cp ${dockerMongoName}:/dump .`);
-
-    log("Compressing dump ....");
-    await execCommand(`tar -cf dump.tar dump`);
-
-    log("Removing dump from container ....");
-    await execCommand(`docker exec ${dockerMongoName} rm -rf dump`);
-
-    log("Removing uncompressed dump folder ....");
-    await execCommand(`rm -rf dump`);
-  }
-};
-
-module.exports.deployDbs = deployDbs;
-module.exports.dumpDb = dumpDb;
-
-module.exports.update = program => {
-  if (process.argv.length < 4) {
-    return console.log("Pass service names !!!");
-  }
-
-  const serviceNames = process.argv[3];
-
-  return update({ serviceNames, noimage: program.noimage, uis: program.uis });
-};
-
-module.exports.restart = () => {
-  const name = process.argv[3];
-  return restart(name);
-};
-
-module.exports.syncui = () => {
-  const name = process.argv[3];
-  const ui_location = process.argv[4];
-
-  return syncUI({ name, ui_location });
-};
-
 const up = async () => {
-  await cleaning();
-
   const configs = await fse.readJSON(filePath("configs.json"));
   const be_env = configs.be_env || {};
   const image_tag = configs.image_tag || "federation";
@@ -1056,4 +990,68 @@ const up = async () => {
   // }
 
   // return execCommand("docker-compose up -d");
+};
+
+module.exports.up = up;
+
+const dumpDb = async program => {
+  if (process.argv.length < 4) {
+    return console.log("Pass db name !!!");
+  }
+
+  const dbName = process.argv[3];
+
+  const configs = await fse.readJSON(filePath("configs.json"));
+
+  await execCommand(
+    `docker ps --format "{{.Names}}" | grep mongo > docker-mongo-name.txt`
+  );
+  const dockerMongoName = fs
+    .readFileSync("docker-mongo-name.txt")
+    .toString()
+    .replace("\n", "");
+
+  log("Running mongodump ....");
+  await execCommand(
+    `docker exec ${dockerMongoName} mongodump -u ${configs.mongo.username} -p ${configs.mongo.password} --authenticationDatabase admin --db ${dbName}`
+  );
+
+  if (program.copydump) {
+    log("Copying dump ....");
+    await execCommand(`docker cp ${dockerMongoName}:/dump .`);
+
+    log("Compressing dump ....");
+    await execCommand(`tar -cf dump.tar dump`);
+
+    log("Removing dump from container ....");
+    await execCommand(`docker exec ${dockerMongoName} rm -rf dump`);
+
+    log("Removing uncompressed dump folder ....");
+    await execCommand(`rm -rf dump`);
+  }
+};
+
+module.exports.deployDbs = deployDbs;
+module.exports.dumpDb = dumpDb;
+
+module.exports.update = program => {
+  if (process.argv.length < 4) {
+    return console.log("Pass service names !!!");
+  }
+
+  const serviceNames = process.argv[3];
+
+  return update({ serviceNames, noimage: program.noimage, uis: program.uis });
+};
+
+module.exports.restart = () => {
+  const name = process.argv[3];
+  return restart(name);
+};
+
+module.exports.syncui = () => {
+  const name = process.argv[3];
+  const ui_location = process.argv[4];
+
+  return syncUI({ name, ui_location });
 };
