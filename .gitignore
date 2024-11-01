@@ -3,3 +3,7 @@ mongodata
 node_modules
 rabbitmq-data
 redisdata
+configs.json
+docker-compose.yml
+docker-compose-dbs.yml
+
