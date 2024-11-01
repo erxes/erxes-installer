@@ -277,11 +277,11 @@ const deployDbs = async () => {
   spinner.succeed("Cleanup complete.");
 
   spinner.start("Initializing Docker swarm...");
-  execCommand("docker swarm init", true);
+  await execCommand("docker swarm init", true);
   spinner.succeed("Docker swarm initialized.");
 
   spinner.start("Creating Docker network...");
-  execCommand("docker network create --driver overlay erxes", true);
+  await execCommand("docker network create --driver overlay erxes", true);
   spinner.succeed("Docker network created.");
 
   spinner.start("Reading configurations...");
