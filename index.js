@@ -9,7 +9,7 @@ const {
   PLUGINS
 } = require("./constants");
 
-const { deployDbs } = require("./deployer");
+const { deployDbs, erxesUp } = require("./deployer");
 
 const generatePass = () =>
   generator.generate({
@@ -76,7 +76,7 @@ const installAndDeployment = async () => {
   }
 
   await deployDbs();
-  await up();
+  await erxesUp();
 
   fs.writeFileSync("configs.json", JSON.stringify(configs, null, 4));
 };

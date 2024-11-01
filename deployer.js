@@ -521,7 +521,7 @@ module.exports.removeService = async () => {
   await execCommand(`docker service rm ${name}`, true);
 };
 
-const up = async () => {
+const erxesUp = async () => {
   const configs = await fse.readJSON(filePath("configs.json"));
   const be_env = configs.be_env || {};
   const image_tag = configs.image_tag || "federation";
@@ -992,8 +992,6 @@ const up = async () => {
   // return execCommand("docker-compose up -d");
 };
 
-module.exports.up = up;
-
 const dumpDb = async program => {
   if (process.argv.length < 4) {
     return console.log("Pass db name !!!");
@@ -1033,6 +1031,8 @@ const dumpDb = async program => {
 
 module.exports.deployDbs = deployDbs;
 module.exports.dumpDb = dumpDb;
+
+module.exports.erxesUp = erxesUp;
 
 module.exports.update = program => {
   if (process.argv.length < 4) {
