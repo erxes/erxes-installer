@@ -751,9 +751,9 @@ const erxesUp = async () => {
     }
   }
 
-  if (downloadLocales) {
-    updateLocales();
-  }
+  // if (downloadLocales) {
+  // updateLocales();
+  // }
 
   const uiPlugins = [];
   const essyncerJSON = {
