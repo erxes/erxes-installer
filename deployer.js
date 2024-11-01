@@ -267,31 +267,97 @@ const generateNetworks = configs => {
   };
 };
 
+// const deployDbs = async () => {
+//   const ora = (await import("ora")).default;
+//   const spinner = ora();
+
+//   spinner.start("Cleaning up...");
+//   await cleaning();
+//   spinner.succeed("Cleanup complete.");
+
+//   spinner.start("Checking Docker swarm status...");
+//   const { stdout: dockerInfo } = await execCommand("docker info", true);
+//   if (!dockerInfo.includes("Swarm: active")) {
+//     spinner.start("Initializing Docker swarm...");
+//     await execCommand("docker swarm init", true);
+//     spinner.succeed("Docker swarm initialized.");
+//   } else {
+//     spinner.succeed("Docker swarm is already active.");
+//   }
+
+//   spinner.start("Creating Docker network...");
+//   await execCommand("docker network create --driver overlay erxes", true);
+//   spinner.succeed("Docker network created.");
+
+//   spinner.start("Reading configurations...");
+//   const configs = await fse.readJSON(filePath("configs.json"));
+//   spinner.succeed("Configurations read.");
+
+//   const dockerComposeConfig = {
+//     version: "3.3",
+//     networks: {
+//       erxes: generateNetworks(configs)
+//     },
+//     services: {}
+//   };
+
+//   if (configs.kibana) {
+//     spinner.start("Setting up Kibana service...");
+//     dockerComposeConfig.services.kibana = {
+//       image: "docker.elastic.co/kibana/kibana:7.6.0",
+//       ports: ["5601:5601"],
+//       networks: ["erxes"]
+//     };
+//     spinner.succeed("Kibana service configured.");
+//   }
+
+//   if (configs.mongo) {
+//     spinner.start("Setting up MongoDB service...");
+//     if (!(await fse.exists(filePath("mongodata")))) {
+//       await execCommand("mkdir mongodata");
+//     }
+
+//     dockerComposeConfig.services.mongo = {
+//       hostname: "mongo",
+//       image: "mongo:4.4.25",
+//       ports: [`0.0.0.0:${MONGO_PORT}:27017`],
+//       environment: {
+//         MONGO_INITDB_ROOT_USERNAME: configs.mongo.username,
+//         MONGO_INITDB_ROOT_PASSWORD: configs.mongo.password
+//       },
+//       networks: ["erxes"],
+//       volumes: ["./mongodata:/data/db"],
+//       extra_hosts: ["mongo:127.0.0.1"]
+//     };
+//     spinner.succeed("MongoDB service configured.");
+//   }
+
+//   spinner.start("Generating docker-compose-dbs.yml...");
+//   const yamlString = yaml.stringify(dockerComposeConfig);
+//   fs.writeFileSync(filePath("docker-compose-dbs.yml"), yamlString);
+//   spinner.succeed("docker-compose-dbs.yml generated.");
+
+//   spinner.start("Deploying databases...");
+
+//   await execCommand(
+//     "docker stack deploy --compose-file docker-compose-dbs.yml erxes-dbs --with-registry-auth --resolve-image changed"
+//   );
+
+//   spinner.succeed("Databases deployed.");
+// };
+
 const deployDbs = async () => {
   const ora = (await import("ora")).default;
+
   const spinner = ora();
 
   spinner.start("Cleaning up...");
+
   await cleaning();
+
   spinner.succeed("Cleanup complete.");
 
-  spinner.start("Checking Docker swarm status...");
-  const { stdout: dockerInfo } = await execCommand("docker info", true);
-  if (!dockerInfo.includes("Swarm: active")) {
-    spinner.start("Initializing Docker swarm...");
-    await execCommand("docker swarm init", true);
-    spinner.succeed("Docker swarm initialized.");
-  } else {
-    spinner.succeed("Docker swarm is already active.");
-  }
-
-  spinner.start("Creating Docker network...");
-  await execCommand("docker network create --driver overlay erxes", true);
-  spinner.succeed("Docker network created.");
-
-  spinner.start("Reading configurations...");
   const configs = await fse.readJSON(filePath("configs.json"));
-  spinner.succeed("Configurations read.");
 
   const dockerComposeConfig = {
     version: "3.3",
@@ -302,17 +368,14 @@ const deployDbs = async () => {
   };
 
   if (configs.kibana) {
-    spinner.start("Setting up Kibana service...");
     dockerComposeConfig.services.kibana = {
       image: "docker.elastic.co/kibana/kibana:7.6.0",
       ports: ["5601:5601"],
       networks: ["erxes"]
     };
-    spinner.succeed("Kibana service configured.");
   }
 
   if (configs.mongo) {
-    spinner.start("Setting up MongoDB service...");
     if (!(await fse.exists(filePath("mongodata")))) {
       await execCommand("mkdir mongodata");
     }
@@ -327,23 +390,112 @@ const deployDbs = async () => {
       },
       networks: ["erxes"],
       volumes: ["./mongodata:/data/db"],
+      // command: ["--replSet", "rs0", "--bind_ip_all"],
       extra_hosts: ["mongo:127.0.0.1"]
     };
-    spinner.succeed("MongoDB service configured.");
   }
 
-  spinner.start("Generating docker-compose-dbs.yml...");
+  if (configs.mongo.replication) {
+    // if (!(await fse.exists(filePath(`mongo-key`)))) {
+    //   log("mongo-key file not found ....", "red");
+    //   return log(
+    //     `Create this file using
+    //       openssl rand -base64 756 > <path-to-keyfile>
+    //       chmod 400 <path-to-keyfile>
+    //       chmod 999:999 <path-to-keyfile>
+    //   `,
+    //     "red"
+    //   );
+    // }
+    // dockerComposeConfig.services.mongo.volumes.push(
+    //   "./mongo-key:/etc/mongodb/keys/mongo-key"
+    // );
+    // dockerComposeConfig.services.mongo.command.push("--keyFile");
+    // dockerComposeConfig.services.mongo.command.push(
+    //   "/etc/mongodb/keys/mongo-key"
+    // );
+    // dockerComposeConfig.services.mongo.extra_hosts = [
+    //   `mongo:${configs.db_server_address}`,
+    //   `mongo-secondary:${configs.secondary_server_address}`
+    // ];
+  }
+
+  if (configs.elasticsearch) {
+    if (!(await fse.exists(filePath("elasticsearchData")))) {
+      await execCommand("mkdir elasticsearchData");
+    }
+
+    dockerComposeConfig.services.elasticsearch = {
+      image: "docker.elastic.co/elasticsearch/elasticsearch:7.8.0",
+      environment: {
+        "discovery.type": "single-node"
+      },
+      ports: ["9200:9200"],
+      networks: ["erxes"],
+      volumes: ["./elasticsearchData:/usr/share/elasticsearch/data"],
+      ulimits: {
+        memlock: {
+          soft: -1,
+          hard: -1
+        }
+      }
+    };
+  }
+
+  if (configs.redis) {
+    if (!(await fse.exists(filePath("redisdata")))) {
+      await execCommand("mkdir redisdata");
+    }
+
+    dockerComposeConfig.services.redis = {
+      image: "redis:7.2.1",
+      command: `redis-server --appendonly yes --requirepass ${configs.redis.password}`,
+      ports: [`${REDIS_PORT}:6379`],
+      networks: ["erxes"],
+      volumes: ["./redisdata:/data"]
+    };
+  }
+
+  if (configs.rabbitmq) {
+    if (!(await fse.exists(filePath("rabbitmq-data")))) {
+      await execCommand("mkdir rabbitmq-data");
+    }
+
+    dockerComposeConfig.services.rabbitmq = {
+      image: "rabbitmq:3.7.17-management",
+      hostname: "rabbitmq",
+      environment: {
+        RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "2048MiB",
+        RABBITMQ_ERLANG_COOKIE: configs.rabbitmq.cookie,
+        RABBITMQ_DEFAULT_USER: configs.rabbitmq.user,
+        RABBITMQ_DEFAULT_PASS: configs.rabbitmq.pass,
+        RABBITMQ_DEFAULT_VHOST: configs.rabbitmq.vhost
+      },
+      ports: [`${RABBITMQ_PORT}:5672`, "15672:15672"],
+      networks: ["erxes"],
+      volumes: ["./rabbitmq-data:/var/lib/rabbitmq"]
+    };
+  }
+
   const yamlString = yaml.stringify(dockerComposeConfig);
+
+  log("Generating docker-compose-dbs.yml ....");
+
   fs.writeFileSync(filePath("docker-compose-dbs.yml"), yamlString);
-  spinner.succeed("docker-compose-dbs.yml generated.");
 
   spinner.start("Deploying databases...");
 
+  // if (isSwarm) {
   await execCommand(
     "docker stack deploy --compose-file docker-compose-dbs.yml erxes-dbs --with-registry-auth --resolve-image changed"
   );
+  // }
 
   spinner.succeed("Databases deployed.");
+
+  return;
+
+  // return execCommand("docker-compose -f docker-compose-dbs.yml up -d");
 };
 
 module.exports.installerUpdateConfigs = async () => {
