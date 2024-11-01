@@ -7,13 +7,17 @@ const PLUGINS = [
 ];
 
 const EXPERIENCES = [
-  { message: "Experience 1", name: "exp1" },
-  { message: "Experience 2", name: "exp2" }
+  { message: "Sales", name: "exp1" },
+  { message: "Frontline", name: "exp2" },
+  { message: "Operation", name: "exp3" },
+  { message: "Marketing", name: "exp4" }
 ];
 
 const PLUGINS_WITH_EXPERIENCE = {
   exp1: [{ name: "sales" }, { name: "tasks" }],
-  exp2: [{ name: "sales" }, { name: "tasks" }, { name: "purchases" }]
+  exp2: [{ name: "sales" }, { name: "tasks" }, { name: "purchases" }],
+  exp3: [{ name: "sales" }, { name: "tasks" }, { name: "purchases" }],
+  exp4: [{ name: "sales" }, { name: "tasks" }, { name: "purchases" }]
 };
 
 module.exports = { PLUGINS, EXPERIENCES, PLUGINS_WITH_EXPERIENCE };

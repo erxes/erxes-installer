@@ -10,6 +10,7 @@ const {
 } = require("./constants");
 
 const { deployDbs, erxesUp } = require("./deployer");
+const { execCommand } = require("./utils");
 
 const generatePass = () =>
   generator.generate({
@@ -71,7 +72,7 @@ const installAndDeployment = async () => {
 
   if (installType === "Choose Plugins") {
     const chosenPlugins = await new MultiSelect({
-      message: "Select experience type: ",
+      message: "Select plugins to install (use space to check): ",
       choices: PLUGINS
     }).run();
 
@@ -86,17 +87,49 @@ const installAndDeployment = async () => {
   fs.writeFileSync("configs.json", JSON.stringify(configs, null, 4));
 };
 
+const installAndRemovePlugins = async () => {
+  const action = await new Select({
+    message: "Which action do you want: ",
+    choices: ["Install new plugins", "Uninstall plugins"]
+  }).run();
+
+  if (action === "Install new plugins") {
+    const chosenPlugins = await new MultiSelect({
+      message: "Select plugins to install (use space to check): ",
+      choices: PLUGINS
+    }).run();
+
+    configs.plugins = chosenPlugins.map(plugin => {
+      return { name: plugin };
+    });
+  }
+
+  if (action === "Uninstall plugins") {
+    const chosenPlugins = await new MultiSelect({
+      message: "Select plugins to uninstall (use space to check): ",
+      choices: PLUGINS
+    }).run();
+
+    configs.plugins = chosenPlugins.map(plugin => {
+      return { name: plugin };
+    });
+  }
+
+  await execCommand("docker stack rm erxes");
+
+  await erxesUp();
+};
+
 const main = async () => {
   const actionSelect = new Select({
     message: "Select a Action you want to perform:",
     choices: [
       "Deployment",
+      "Install & Remove plugins",
       "Start",
       "Stop",
       "Restart",
-      "Update",
-      "View logs",
-      "Backup Data"
+      "View Logs"
     ]
   });
 
@@ -105,7 +138,8 @@ const main = async () => {
   switch (answer) {
     case "Deployment":
       return installAndDeployment();
-      break;
+    case "Install & Remove plugins":
+      return installAndRemovePlugins();
   }
 };
 

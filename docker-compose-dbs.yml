@@ -10,10 +10,49 @@ services:
       - 0.0.0.0:27017:27017
     environment:
       MONGO_INITDB_ROOT_USERNAME: erxes
-      MONGO_INITDB_ROOT_PASSWORD: BP3Fr19TqV
+      MONGO_INITDB_ROOT_PASSWORD: arV0u2QZY4
     networks:
       - erxes
     volumes:
       - ./mongodata:/data/db
     extra_hosts:
       - mongo:127.0.0.1
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.8.0
+    environment:
+      discovery.type: single-node
+    ports:
+      - 9200:9200
+    networks:
+      - erxes
+    volumes:
+      - ./elasticsearchData:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+  redis:
+    image: redis:7.2.1
+    command: redis-server --appendonly yes --requirepass mo1sgkJj7C
+    ports:
+      - 6379:6379
+    networks:
+      - erxes
+    volumes:
+      - ./redisdata:/data
+  rabbitmq:
+    image: rabbitmq:3.7.17-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 2048MiB
+      RABBITMQ_ERLANG_COOKIE: ""
+      RABBITMQ_DEFAULT_USER: erxes
+      RABBITMQ_DEFAULT_PASS: hU9DlllwHL
+      RABBITMQ_DEFAULT_VHOST: ""
+    ports:
+      - 5672:5672
+      - 15672:15672
+    networks:
+      - erxes
+    volumes:
+      - ./rabbitmq-data:/var/lib/rabbitmq
