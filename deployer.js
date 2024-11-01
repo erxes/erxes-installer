@@ -384,7 +384,7 @@ const deployDbs = async () => {
       },
       networks: ["erxes"],
       volumes: ["./mongodata:/data/db"],
-      // command: ["--replSet", "rs0", "--bind_ip_all"],
+      command: ["--replSet", "rs0", "--bind_ip_all"],
       extra_hosts: ["mongo:127.0.0.1"]
     };
   }
