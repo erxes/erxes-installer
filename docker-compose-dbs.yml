@@ -10,7 +10,7 @@ services:
       - 0.0.0.0:27017:27017
     environment:
       MONGO_INITDB_ROOT_USERNAME: erxes
-      MONGO_INITDB_ROOT_PASSWORD: PwUlbQWxY6
+      MONGO_INITDB_ROOT_PASSWORD: fJsaj3ohJI
     networks:
       - erxes
     volumes:

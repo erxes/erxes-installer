@@ -273,7 +273,7 @@ const deployDbs = async () => {
   const spinner = ora();
 
   spinner.start("Cleaning up...");
-  await cleaning();
+  // await cleaning();
   spinner.succeed("Cleanup complete.");
 
   spinner.start("Initializing Docker swarm...");
